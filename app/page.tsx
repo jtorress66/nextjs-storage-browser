@@ -56,27 +56,54 @@ function sleep(ms: number) {
 }
 
 /**
- * Wait until a file that contains the original name appears in DEST_PREFIX.
- * Assumes Lambda will rename to something like:
- *   <timestamp>_<originalName>
- * (or otherwise includes originalName somewhere in the final key).
+ * Wait until a file appears in DEST_PREFIX.
+ * Because we now only suffix when there is a collision, the final name can be:
+ *  - originalName (no suffix), OR
+ *  - originalBase_v1_YYYYMMDD_HHMMSS.ext (suffix), OR
+ *  - originalBase_v1_YYYYMMDD_HHMMSS_rand.ext (rare)
+ *
+ * So we consider it "found" if either:
+ *  - name === originalName, OR
+ *  - name starts with originalBase + "_v"
  */
-async function waitForRenamedFileInDest(destPrefix: string, originalName: string, attempts = 20, delayMs = 1000) {
+function splitNameAndExt(filename: string): { base: string; ext: string } {
+  const lastDot = filename.lastIndexOf('.');
+  if (lastDot <= 0) return { base: filename, ext: '' };
+  return { base: filename.slice(0, lastDot), ext: filename.slice(lastDot) };
+}
+
+async function waitForMovedFileInDest(
+  destPrefix: string,
+  originalName: string,
+  attempts = 25,
+  delayMs = 1000
+) {
+  const { base } = splitNameAndExt(originalName);
+
   for (let i = 0; i < attempts; i++) {
     const resp = await list({ path: destPrefix });
     const raw = (resp as any).items ?? [];
 
-    // Find any object whose filename includes the originalName
     const found = raw.find((obj: any) => {
       const fullPath: string = obj.path;
       if (!fullPath || fullPath.endsWith('/')) return false;
+
       const nameOnly = fullPath.slice(destPrefix.length);
-      return nameOnly.includes(originalName);
+      if (!nameOnly) return false;
+
+      // Case 1: moved with original filename
+      if (nameOnly === originalName) return true;
+
+      // Case 2: renamed due to collision
+      if (nameOnly.startsWith(`${base}_v`)) return true;
+
+      return false;
     });
 
     if (found) return true;
     await sleep(delayMs);
   }
+
   return false;
 }
 
@@ -90,7 +117,6 @@ function Page() {
   // Lambda renames/moves here (what user should browse):
   const DEST_PREFIX = 'public/UploadedProgramFiles/';
 
-  // Header UI (Matt-style)
   const APP_TITLE = "Juan's Programming Storage";
 
   const [userEmail, setUserEmail] = useState<string>('');
@@ -103,10 +129,10 @@ function Page() {
   const [newFolderName, setNewFolderName] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // ✅ Breadcrumbs should be built RELATIVE to ROOT (prevents public/public)
+  // Breadcrumbs built RELATIVE to ROOT (prevents public/public)
   const relativePrefix = useMemo(() => {
     if (!currentPrefix.startsWith(ROOT)) return '';
-    return currentPrefix.slice(ROOT.length); // "" or "UploadedProgramFiles/"
+    return currentPrefix.slice(ROOT.length);
   }, [currentPrefix]);
 
   const breadcrumbs = useMemo(() => splitBreadcrumbRelative(relativePrefix), [relativePrefix]);
@@ -115,7 +141,6 @@ function Page() {
     (async () => {
       try {
         const attrs = await fetchUserAttributes();
-        // Common keys: email, preferred_username, etc.
         const email = (attrs as any)?.email || (attrs as any)?.preferred_username || '';
         setUserEmail(String(email || ''));
       } catch (e) {
@@ -199,10 +224,10 @@ function Page() {
   }
 
   /**
-   * ✅ Upload flow:
+   * Upload flow:
    * - Upload to public/incoming/<originalName>
    * - Switch view to public/UploadedProgramFiles/
-   * - Poll until renamed file appears, then refresh
+   * - Poll until file appears in destination (original name OR suffixed), then refresh
    */
   async function onUploadFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -220,10 +245,9 @@ function Page() {
       // 2) Move user to destination folder view
       setCurrentPrefix(DEST_PREFIX);
 
-      // 3) Poll for rename/move to complete, then refresh destination listing
-      //    (best-effort: if lambda is slow, user can still hit Refresh)
+      // 3) Poll for move/rename to complete, then refresh destination listing
       for (const f of Array.from(files)) {
-        await waitForRenamedFileInDest(DEST_PREFIX, f.name, 25, 1000);
+        await waitForMovedFileInDest(DEST_PREFIX, f.name, 25, 1000);
       }
 
       await refresh(DEST_PREFIX);
@@ -291,7 +315,6 @@ function Page() {
 
   return (
     <div style={{ padding: 24 }}>
-      {/* ====== Matt-style header (title + logged-in user + sign out on right) ====== */}
       <div
         style={{
           display: 'flex',
@@ -303,7 +326,9 @@ function Page() {
       >
         <div>
           <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.1 }}>{APP_TITLE}</div>
-          <div style={{ marginTop: 6, fontSize: 14, opacity: 0.8 }}>Logged in as: {userEmail || '(unknown)'}</div>
+          <div style={{ marginTop: 6, fontSize: 14, opacity: 0.8 }}>
+            Logged in as: {userEmail || '(unknown)'}
+          </div>
         </div>
 
         <Button variation="primary" onClick={() => signOut()}>
@@ -313,7 +338,6 @@ function Page() {
 
       <hr style={{ border: 0, borderTop: '1px solid #e5e7eb', marginBottom: 18 }} />
 
-      {/* ====== Breadcrumbs + current folder title ====== */}
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 14, opacity: 0.8 }}>
           Home&nbsp;/&nbsp;
@@ -370,13 +394,10 @@ function Page() {
         </div>
 
         {error ? (
-          <div style={{ marginTop: 12, color: 'crimson', whiteSpace: 'pre-wrap' }}>
-            {error}
-          </div>
+          <div style={{ marginTop: 12, color: 'crimson', whiteSpace: 'pre-wrap' }}>{error}</div>
         ) : null}
       </div>
 
-      {/* ====== Table ====== */}
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead style={{ background: '#f8fafc' }}>
@@ -415,7 +436,9 @@ function Page() {
                     )}
                   </td>
                   <td style={{ padding: 10 }}>{it.isFolder ? 'Folder' : 'File'}</td>
-                  <td style={{ padding: 10 }}>{!it.isFolder && it.lastModified ? it.lastModified.toLocaleString() : ''}</td>
+                  <td style={{ padding: 10 }}>
+                    {!it.isFolder && it.lastModified ? it.lastModified.toLocaleString() : ''}
+                  </td>
                   <td style={{ padding: 10, textAlign: 'right' }}>
                     {!it.isFolder && typeof it.size === 'number' ? `${it.size.toLocaleString()} B` : ''}
                   </td>

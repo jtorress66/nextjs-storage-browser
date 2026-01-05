@@ -13,7 +13,8 @@ export const storage = defineStorage({
   },
 
   access: (allow) => ({
-    // ✅ App access to all public files (incoming + UploadedProgramFiles live under public/*)
+    // ✅ Needed for the incoming -> UploadedProgramFiles rename/move workflow
+    //    (UI uses public/incoming/ and public/UploadedProgramFiles/)
     "public/*": [
       allow.authenticated.to(["read"]),
       allow.entity("identity").to(["read", "write", "delete"]),
@@ -22,17 +23,44 @@ export const storage = defineStorage({
       allow.resource(onUploadHandler).to(["read", "write", "delete"]),
     ],
 
-    // keep your other folders as you had them
+    // ===== Existing folders from the other branch (keep them) =====
+    "ConversionFiles/*": [
+      allow.authenticated.to(["read"]),
+      allow.entity("identity").to(["read", "write", "delete"]),
+      allow.resource(onUploadHandler).to(["read", "write", "delete"]),
+    ],
+
+    "ConversionFileErrors/*": [
+      allow.authenticated.to(["read"]),
+      allow.entity("identity").to(["read", "write", "delete"]),
+      allow.resource(onUploadHandler).to(["read", "write", "delete"]),
+    ],
+
+    "ConversionFileErrors/Mock8/*": [
+      allow.authenticated.to(["read"]),
+      allow.entity("identity").to(["read", "write", "delete"]),
+      allow.resource(onUploadHandler).to(["read", "write", "delete"]),
+    ],
+
+    "InitialUpload/*": [
+      allow.authenticated.to(["read"]),
+      allow.entity("identity").to(["read", "write", "delete"]),
+      allow.resource(onUploadHandler).to(["read", "write", "delete"]),
+    ],
+
+    // ===== Keep your existing folders too =====
     "InitialUploadErrors/*": [
       allow.authenticated.to(["read"]),
       allow.entity("identity").to(["read", "write", "delete"]),
       allow.resource(onUploadHandler).to(["read", "write", "delete"]),
     ],
+
     "TSQLFiles/*": [
       allow.authenticated.to(["read"]),
       allow.entity("identity").to(["read", "write", "delete"]),
       allow.resource(onUploadHandler).to(["read", "write", "delete"]),
     ],
+
     "DataValidation/*": [
       allow.authenticated.to(["read"]),
       allow.entity("identity").to(["read", "write", "delete"]),
