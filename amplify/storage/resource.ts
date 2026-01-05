@@ -1,55 +1,42 @@
-import { defineStorage } from "@aws-amplify/backend";
+import { defineFunction, defineStorage } from "@aws-amplify/backend";
 
-/*export const storage = defineStorage({
-  name: "storage-browser-test",
-  access: (allow: any) => ({
-    'media-readwritedelete/*': [allow.authenticated.to(['read', 'write', 'delete'])],
-    'media-readonly/*': [allow.authenticated.to(['read'])],
-    'shared-folder-readwrite/*': [
-      allow.authenticated.to(['read', 'write'])
-    ],
-    'protected-useronlyreadwritedelete/{entity_id}/*': [
-      allow.authenticated.to(['read']),
-      allow.entity('identity').to(['read', 'write', 'delete'])
-    ],
-    'private-useronlyreadwritedelete/{entity_id}/*': [
-      allow.entity('identity').to(['read', 'write', 'delete'])
-    ]
-  })
-});*/
-
+const onUploadHandler = defineFunction({
+  entry: "./on-upload-handler.ts",
+  resourceGroupName: "storage",
+});
 
 export const storage = defineStorage({
-  name: 'storage-browser-test',
+  name: "storage-browser-test",
+
+  triggers: {
+    onUpload: onUploadHandler,
+  },
+
   access: (allow) => ({
-    'ConversionFiles/*': [
-      allow.authenticated.to(['read']),
-      allow.entity('identity').to(['read', 'write', 'delete'])
-    ]
-    ,
-    'ConversionFileErrors/*': [
-      allow.authenticated.to(['read']),
-      allow.entity('identity').to(['read', 'write', 'delete'])
-    ]
-    ,
-    'InitialUpload/*': [
-      allow.authenticated.to(['read']),
-      allow.entity('identity').to(['read', 'write', 'delete'])
-    ]
-    ,
-    'InitialUploadErrors/*': [
-      allow.authenticated.to(['read']),
-      allow.entity('identity').to(['read', 'write', 'delete'])
-    ]
-    ,
-    'TSQLFiles/*': [
-      allow.authenticated.to(['read']),
-      allow.entity('identity').to(['read', 'write', 'delete'])
-    ]
-    ,
-    'DataValidation/*': [
-      allow.authenticated.to(['read']),
-      allow.entity('identity').to(['read', 'write', 'delete'])
-    ]
-  })
+    // ✅ App access to all public files (incoming + UploadedProgramFiles live under public/*)
+    "public/*": [
+      allow.authenticated.to(["read"]),
+      allow.entity("identity").to(["read", "write", "delete"]),
+
+      // ✅ CRITICAL: allow the trigger function to copy/delete objects
+      allow.resource(onUploadHandler).to(["read", "write", "delete"]),
+    ],
+
+    // keep your other folders as you had them
+    "InitialUploadErrors/*": [
+      allow.authenticated.to(["read"]),
+      allow.entity("identity").to(["read", "write", "delete"]),
+      allow.resource(onUploadHandler).to(["read", "write", "delete"]),
+    ],
+    "TSQLFiles/*": [
+      allow.authenticated.to(["read"]),
+      allow.entity("identity").to(["read", "write", "delete"]),
+      allow.resource(onUploadHandler).to(["read", "write", "delete"]),
+    ],
+    "DataValidation/*": [
+      allow.authenticated.to(["read"]),
+      allow.entity("identity").to(["read", "write", "delete"]),
+      allow.resource(onUploadHandler).to(["read", "write", "delete"]),
+    ],
+  }),
 });
